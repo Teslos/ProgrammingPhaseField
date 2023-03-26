@@ -44,6 +44,7 @@ con = init_micro_ch_fem(npoin, ndofn, conc0)
 # -----------------------------------
 #              EVOLVE
 # -----------------------------------
+@time begin
 for istep = 1:nstep
     con_old = con
     # Newton iteration
@@ -53,12 +54,12 @@ for istep = 1:nstep
     asdis = spzeros(ntotv)
     for iter = 1:miter
 
-        gstif, gforce = chem_stiff_v2(npoin,nelem,nnode,nstre,ndime,
+        @elapsed gforce = chem_stiff_v2!(npoin,nelem,nnode,nstre,ndime,
             ndofn, ngaus, ntype, lnods, coord, mobil, grcoef, con,
             con_old,dtime,posgp,weigp,istep, iter, gstif)
 
         # Rearrange gstif & gforce for PBC
-        gstif, gforce = apply_periodic_bc(ncountm, ncounts, master, slave,
+        gforce = apply_periodic_bc!(ncountm, ncounts, master, slave,
         ndofn, npoin, gstif, gforce, iter)
 
         # set preconditioner to diagonal
@@ -72,13 +73,13 @@ for istep = 1:nstep
             asdis = solve(linsol, IterativeSolversJL_GMRES(), Pl=D)
         end
         linsol = LinearSolve.set_b(asdis.cache, gforce)
-        asdis  = solve(linsol, IterativeSolversJL_GMRES(), Pl=D)
+        @elapsed asdis  = solve(linsol, IterativeSolversJL_GMRES(), Pl=D)
         
-        # ---------------------------------
+        # ---------------------------------  
         #  Recover slave node values
         # ---------------------------------
         
-        asdis = recover_slave_dof(asdis, ncountm, ncounts, master, slave, npoin, ndofn)
+        recover_slave_dof!(asdis, ncountm, ncounts, master, slave, npoin, ndofn)
 
         # update concentration field
         con = con + asdis.u
@@ -101,7 +102,6 @@ for istep = 1:nstep
         end
         #println("Max:", maximum(gstif))
     end # end of Newton
-
     # print out
     if ( istep%nprnt == 0 )
         println("Done step: ",istep)
@@ -109,6 +109,7 @@ for istep = 1:nstep
         write_vtk_fem(npoin, nelem, nnode, lnods, coord, istep, con)
     end
 end
+end 
 
 #print("compute time: ", compute_time)
 
@@ -124,7 +125,7 @@ function init_micro_ch_fem(npoin, ndofn, conc0)
     return nodcon
 end
 
-function apply_periodic_bc(ncountm, ncounts, master, slave, ndofn, npoin, gstif, gforce, iter)
+function apply_periodic_bc!(ncountm, ncounts, master, slave, ndofn, npoin, gstif, gforce, iter)
     for ipbc = 1:ncountm
         im = master[ipbc]
         is = slave[ipbc]
@@ -146,7 +147,8 @@ function apply_periodic_bc(ncountm, ncounts, master, slave, ndofn, npoin, gstif,
         gforce[im] = gforce[im] + gforce[is]
         gforce[is] = 0.0
     end
-    return (gstif, gforce)
+    #return (gstif, gforce)
+    return gforce
 end
 
 function cart_deriv(npoin, nelem, nnode, nstre, ndime, ndofn, ngaus, ntype, lnods,
@@ -205,7 +207,7 @@ function cart_deriv(npoin, nelem, nnode, nstre, ndime, ndofn, ngaus, ntype, lnod
     return (dgdx, dvolum)
 end
 
-function chem_stiff_v2(npoin,nelem,nnode,nstre,ndime,
+function chem_stiff_v2!(npoin,nelem,nnode,nstre,ndime,
             ndofn, ngaus, ntype, lnods, coord, mobil, grcoef, con,
             con_old,dtime,posgp,weigp,istep, iter,gstif)
 
@@ -446,7 +448,8 @@ function chem_stiff_v2(npoin,nelem,nnode,nstre,ndime,
                 end
         
             end # ielem
-            return (gstif, gforce)
+            #return (gstif, gforce)
+            return gforce
 end
 
 """
@@ -1083,7 +1086,7 @@ function jacob3(ielem, elcod, kgasp, shape, deriv, nnode, ndime)
 end
 
 
-function recover_slave_dof(asdis, ncountm, ncounts,
+function recover_slave_dof!(asdis, ncountm, ncounts,
     master, slave, npoin, ndofn)
     
     for ipbc = 1:ncountm
@@ -1092,7 +1095,7 @@ function recover_slave_dof(asdis, ncountm, ncounts,
 
         asdis[is] = asdis[im]
     end
-    return asdis
+    #return asdis
 end
 
 using Printf
